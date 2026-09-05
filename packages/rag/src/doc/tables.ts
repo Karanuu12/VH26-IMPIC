@@ -6,7 +6,7 @@
  * header + rows, because the fault extractor needs real cells: the whole point
  * is that "CAUSE" and "WHAT TO DO" stay in different columns.
  */
-import type { TableData } from "./model";
+import type { TableData } from "./model.ts";
 
 const SEPARATOR_RE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 

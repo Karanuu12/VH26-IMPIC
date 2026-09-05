@@ -3,7 +3,7 @@
  * Calls Groq's chat completions API directly with supporting context.
  */
 import { z } from "zod";
-import type { ChatTurn, CitedAnswer, AnswerStep, Citation, ScoredHit } from "./types";
+import type { ChatTurn, CitedAnswer, AnswerStep, Citation, ScoredHit } from "./types.ts";
 
 export interface LLMConfig {
   apiKey: string;

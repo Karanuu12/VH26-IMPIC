@@ -12,8 +12,8 @@
  * This is NOT prompt engineering. Each stage is a deterministic check
  * or a separate LLM call with a structured, verifiable task.
  */
-import type { Chunk, ScoredHit, CitedAnswer } from "./types";
-import { MACHINE_PATTERNS } from "./retrieval";
+import type { Chunk, ScoredHit, CitedAnswer } from "./types.ts";
+import { MACHINE_PATTERNS } from "./retrieval.ts";
 
 // ---------------------------------------------------------------------------
 // 1. Pre-generation: Retrieval Score Gate

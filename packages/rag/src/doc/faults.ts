@@ -13,9 +13,9 @@
  * Anything neither extractor understands still survives as an ordinary chunk.
  * This is additive; it never drops content.
  */
-import type { Block, FaultRecord, StepData, Provenance, AdmonitionSeverity } from "./model";
-import { normalizeCode } from "./model";
-import { COL_PATTERNS, findColumn, foldContinuationRows, isFaultTable } from "./tables";
+import type { Block, FaultRecord, StepData, Provenance, AdmonitionSeverity } from "./model.ts";
+import { normalizeCode } from "./model.ts";
+import { COL_PATTERNS, findColumn, foldContinuationRows, isFaultTable } from "./tables.ts";
 
 // ---------------------------------------------------------------------------
 // Shared text → steps / causes

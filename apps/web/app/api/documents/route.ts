@@ -1,6 +1,7 @@
 /** DELETE /api/documents?id=<document_id> — remove one manual and its chunks/faults. */
 import { NextRequest } from "next/server";
 import { getStore } from "@/lib/rag-index";
+import { deletePdf } from "@/lib/pdf-store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,5 +15,8 @@ export async function DELETE(request: NextRequest) {
 
   store.deleteDocument(id);
   store.save();
+  // Delete the retained source PDF too — leaving it behind would keep the
+  // user's document on disk after they asked for it to be removed.
+  deletePdf(id);
   return Response.json({ deleted: id });
 }

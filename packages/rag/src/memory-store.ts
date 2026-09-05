@@ -1,7 +1,7 @@
 /**
  * In-memory vector store fallback for when Qdrant isn't configured.
  */
-import type { Chunk, ScoredHit, VectorStore } from "./types";
+import type { Chunk, ScoredHit, VectorStore } from "./types.ts";
 
 function cosine(a: number[], b: number[]): number {
   let dot = 0, na = 0, nb = 0;

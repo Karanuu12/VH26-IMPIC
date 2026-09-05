@@ -6,15 +6,15 @@ import type {
   StreamEvent,
   VectorStore,
   CitedAnswer,
-} from "./types";
-import { OllamaEmbeddingClient } from "./embeddings";
+} from "./types.ts";
+import { OllamaEmbeddingClient } from "./embeddings.ts";
 import {
   expandQuery,
   detectMachineScope,
   dedupeHits,
   exactMatchHits,
-} from "./retrieval";
-import type { GroqClient } from "./llm";
+} from "./retrieval.ts";
+import type { GroqClient } from "./llm.ts";
 
 export interface PipelineConfig {
   embedder: OllamaEmbeddingClient;

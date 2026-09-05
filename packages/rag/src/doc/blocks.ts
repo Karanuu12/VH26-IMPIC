@@ -12,9 +12,9 @@
  * Here a heading must be *numbered* or match a known structural label, or come
  * from the PDF outline (which is exact, and preferred when available).
  */
-import type { Block, BlockKind, StepData, AdmonitionSeverity } from "./model";
-import { extractUnits } from "./model";
-import { parseMarkdownTable, isTableLine } from "./tables";
+import type { Block, BlockKind, StepData, AdmonitionSeverity } from "./model.ts";
+import { extractUnits } from "./model.ts";
+import { parseMarkdownTable, isTableLine } from "./tables.ts";
 
 export interface PageInput {
   /** 1-based physical page index. */

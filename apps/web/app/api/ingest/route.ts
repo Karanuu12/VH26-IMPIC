@@ -20,6 +20,7 @@ import { getStore, getEmbedder } from "@/lib/rag-index";
 import { setProgress } from "@/lib/ingest-progress";
 import { getEmbedCache } from "@/lib/rag-index";
 import { embedWithCache } from "@timmo/rag/store/embed-cache";
+import { savePdf } from "@/lib/pdf-store";
 
 export const runtime = "nodejs";
 // A 170-page manual takes minutes to parse + embed; don't let the platform cut it off.
@@ -210,6 +211,11 @@ export async function POST(request: NextRequest) {
       vectors,
       faults,
     );
+
+    // Keep the source PDF so a citation can be rendered and checked against
+    // the real page. Written after indexing succeeds, so a failed ingest never
+    // leaves an orphaned file behind.
+    savePdf(documentId, bytes);
 
     setProgress(jobId, "done", 100, "Indexed");
 

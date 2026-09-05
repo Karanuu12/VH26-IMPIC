@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 
-import { chunkBlocks, estimateTokens, splitTable } from "../src/doc/chunker";
-import { parseMarkdownTable } from "../src/doc/tables";
-import type { Block } from "../src/doc/model";
+import { chunkBlocks, estimateTokens, splitTable } from "../src/doc/chunker.ts";
+import { parseMarkdownTable } from "../src/doc/tables.ts";
+import type { Block } from "../src/doc/model.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = readFileSync(resolve(here, "fixtures/acs150-fault-table.md"), "utf8")

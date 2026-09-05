@@ -10,10 +10,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 
-import { parseMarkdownTable, isFaultTable, findColumn, COL_PATTERNS } from "../src/doc/tables";
-import { extractFaultRecords } from "../src/doc/faults";
-import { extractFaultCodes, extractUnits, normalizeCode } from "../src/doc/model";
-import type { Block } from "../src/doc/model";
+import { parseMarkdownTable, isFaultTable, findColumn, COL_PATTERNS } from "../src/doc/tables.ts";
+import { extractFaultRecords } from "../src/doc/faults.ts";
+import { extractFaultCodes, extractUnits, normalizeCode } from "../src/doc/model.ts";
+import type { Block } from "../src/doc/model.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = readFileSync(resolve(here, "fixtures/acs150-fault-table.md"), "utf8")

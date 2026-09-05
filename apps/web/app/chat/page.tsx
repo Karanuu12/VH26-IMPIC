@@ -1,28 +1,25 @@
 "use client";
 
 import React, { useRef, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   ArrowUp,
-  Bot,
   Loader2,
   Upload,
-  User,
-  File,
+  FileText,
   Menu,
   X,
-  BookOpen,
-  Database,
-  Layers,
-  Hash,
   Plus,
   CheckCircle2,
   AlertCircle,
   Trash2,
-  Sparkles,
   Volume2,
   VolumeX,
   Mic,
+  ArrowUpRight,
+  ChevronDown,
+  Maximize2,
 } from "lucide-react";
 
 interface Citation {
@@ -30,6 +27,8 @@ interface Citation {
   title: string;
   page: number;
   section: string;
+  /** The retrieved passage, used to highlight the supporting text on the page. */
+  snippet?: string;
 }
 interface AnswerStep {
   step: number;
@@ -45,10 +44,103 @@ interface CitedAnswer {
   confidence: "high" | "medium" | "low";
   refusals: string[];
 }
+interface QueryStep {
+  label: string;
+  detail?: string;
+  ms: number;
+}
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   structured?: CitedAnswer;
+  /** The pipeline stages that produced this answer, kept so it stays inspectable. */
+  trace?: QueryStep[];
+}
+
+/**
+ * The stages of a query, as they actually complete server-side.
+ *
+ * A chat request is one POST that can take several seconds, and a bare
+ * spinner says nothing -- you cannot tell a slow embedding call from a hung
+ * one. It also throws away the most reassuring thing this product knows: which
+ * manual it searched, how many passages came back, whether the fault index
+ * answered outright. Every line here is a real event with real numbers,
+ * reported after the work it names finished. Nothing is on a timer.
+ */
+function QueryTrace({
+  steps,
+  live,
+  open,
+  onToggle,
+}: {
+  steps: QueryStep[];
+  live: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const latest = steps[steps.length - 1];
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-neutral-50"
+      >
+        {live ? (
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-neutral-400" />
+        ) : (
+          <CheckCircle2 className="size-3.5 shrink-0 text-[#359462]" />
+        )}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-600",
+            live && "shimmer",
+          )}
+        >
+          {live ? (latest?.label ?? "Searching the manuals…") : "How this was answered"}
+        </span>
+        {!live && steps.length > 0 && (
+          <span className="shrink-0 text-[11px] tabular-nums text-neutral-400">
+            {(steps[steps.length - 1].ms / 1000).toFixed(1)}s
+          </span>
+        )}
+        <ChevronDown
+          className={cn(
+            "size-3.5 shrink-0 text-neutral-400 transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open && steps.length > 0 && (
+        <ol className="space-y-2.5 border-t border-neutral-100 px-4 py-3">
+          {steps.map((s, i) => (
+            <li key={i} className="flex gap-2.5">
+              <span className="mt-[6px] size-1.5 shrink-0 rounded-full bg-neutral-300" />
+              <span className="min-w-0 flex-1">
+                <span className="text-[12.5px] font-medium text-neutral-700">{s.label}</span>
+                {s.detail && (
+                  <span className="block text-[11.5px] leading-[1.5] text-neutral-400">
+                    {s.detail}
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 pt-px text-[11px] tabular-nums text-neutral-300">
+                {s.ms < 1000 ? `${s.ms}ms` : `${(s.ms / 1000).toFixed(1)}s`}
+              </span>
+            </li>
+          ))}
+          {live && (
+            <li className="flex gap-2.5">
+              <span className="mt-[6px] size-1.5 shrink-0 animate-pulse rounded-full bg-neutral-400" />
+              <span className="shimmer text-[12.5px] font-medium text-neutral-500">Working…</span>
+            </li>
+          )}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -85,11 +177,262 @@ interface IndexStats {
   }[];
 }
 
-const CONFIDENCE_STYLE: Record<CitedAnswer["confidence"], string> = {
-  high: "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100",
-  medium: "bg-amber-50 text-amber-600 ring-1 ring-amber-100",
-  low: "bg-red-50 text-red-600 ring-1 ring-red-100",
+/**
+ * Colour discipline, after getting this wrong in both directions:
+ *
+ * The landing page uses ONE tint per large card with a lot of white around it.
+ * Applying four tints INSIDE a single answer card was not "matching the
+ * landing page" -- it was the generic pastel-boxes look, and it made colour
+ * meaningless because everything had some.
+ *
+ * So: the card is white, hierarchy is typographic, and colour appears only
+ * where it is the fastest way to read a fact --
+ *
+ *   green  the fix is the fix (step numerals, upload success)
+ *   amber  caution: a refusal, or a claim we could not verify
+ *   sky    provenance, at chip scale only
+ *
+ * Everything else is neutral. One accent, in one place, meaning one thing.
+ */
+const ACCENT = {
+  green: "#359462",
+  amber: "#c64e27",
+  sky: "#0570b0",
+} as const;
+
+/** Confidence is a judgement, so it gets a dot -- not a filled badge. */
+const CONFIDENCE_STYLE: Record<CitedAnswer["confidence"], { dot: string; text: string }> = {
+  high: { dot: "bg-[#359462]", text: "text-[#2f7c53]" },
+  medium: { dot: "bg-[#c98a2b]", text: "text-[#96681c]" },
+  low: { dot: "bg-[#c64e27]", text: "text-[#a8401f]" },
 };
+
+/** Small-caps section label. One typographic device, used consistently. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The model emits per-claim source references inline, and is inconsistent
+ * about the bracket style, so both 【S1】 and [S1] are matched. Rendered raw
+ * they read as garbled output; dropped entirely we would lose the one thing
+ * that ties an individual sentence to a page. So they become superscript chips
+ * carrying the real page number, hoverable for the section path.
+ *
+ * The square-bracket form is deliberately narrow -- `S` followed only by
+ * digits -- because manuals are full of genuine bracketed parameter names
+ * ([Settings], [Motor control], [Fault Reset Assign]) that must survive
+ * untouched.
+ *
+ * A marker pointing past the end of the citation list means the model
+ * referenced a source that was not actually returned -- worth flagging, not
+ * hiding, on a product whose whole claim is that nothing is asserted without a
+ * page behind it.
+ */
+// Built per call rather than shared: a /g regex carries a mutable lastIndex,
+// and one instance reused across renders would skip matches unpredictably.
+const sourceMarker = () => /【\s*S(\d+)\s*】|\[\s*S(\d+)\s*\]/g;
+
+function CitedText({ text, citations }: { text: string; citations: Citation[] }) {
+  if (!text.includes("【") && !text.includes("[S")) return <>{text}</>;
+
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  const re = sourceMarker();
+  while ((m = re.exec(text)) !== null) {
+    const cite = citations[Number(m[1] ?? m[2]) - 1];
+    // Markers usually trail a space before the sentence's period; trimming the
+    // preceding space keeps punctuation tight against the chip.
+    parts.push(text.slice(last, m.index).replace(/\s+$/, ""));
+    parts.push(
+      cite ? (
+        <sup
+          key={`${m.index}-c`}
+          title={`${citationLabel(cite.title)} — ${cite.section}`}
+          className="ml-0.5 inline-flex -translate-y-px items-center rounded-[5px] bg-neutral-100 px-1 py-px align-baseline text-[9.5px] font-semibold tabular-nums text-[#0570b0]"
+        >
+          p.{cite.page}
+        </sup>
+      ) : (
+        <sup
+          key={`${m.index}-c`}
+          title="The model referenced a source that was not returned with this answer — treat this sentence as unverified."
+          className="ml-0.5 inline-flex -translate-y-px items-center rounded-[5px] bg-[#c64e27]/10 px-1 py-px align-baseline text-[9.5px] font-semibold text-[#a8401f]"
+        >
+          unverified
+        </sup>
+      ),
+    );
+    last = m.index + m[0].length;
+  }
+  parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
+
+/** Citation titles are raw filenames; the extension is noise in a chip. */
+function citationLabel(title: string): string {
+  return title.replace(/\.pdf$/i, "");
+}
+
+/**
+ * The cited page from the actual manual, rendered on demand.
+ *
+ * A page number in a chip is still only a claim -- it asks the reader to trust
+ * that page 412 says what the answer says it says. This shows them page 412.
+ * On a product whose entire argument is "we never assert anything without a
+ * source", being able to open the source is the argument.
+ */
+function PageViewer({
+  citation,
+  onClose,
+}: {
+  citation: Citation;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [error, setError] = useState("");
+  const src =
+    `/api/page?doc=${encodeURIComponent(citation.document_id)}&page=${citation.page}` +
+    (citation.snippet ? `&q=${encodeURIComponent(citation.snippet)}` : "");
+
+  // Escape closes, matching every other overlay the user has ever used.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/40 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-medium tracking-[-0.01em] text-neutral-950">
+              {citationLabel(citation.title)} · page {citation.page}
+            </p>
+            {citation.section && (
+              <p className="truncate text-[11.5px] text-neutral-400">{citation.section}</p>
+            )}
+          </div>
+          {citation.snippet && state === "ready" && (
+            <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[10.5px] font-medium text-neutral-500 sm:inline-flex">
+              <span className="size-2 rounded-[3px] bg-[#ffdb59]" />
+              passage used
+            </span>
+          )}
+          <div className="flex shrink-0 items-center">
+          </div>
+          <button
+            onClick={onClose}
+            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+            title="Close (Esc)"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto bg-neutral-100 p-4">
+          {state === "loading" && (
+            <div className="flex items-center justify-center gap-2.5 py-16 text-[13px] text-neutral-500">
+              <Loader2 className="size-4 animate-spin" />
+              <span className="shimmer">Rendering page {citation.page}…</span>
+            </div>
+          )}
+          {state === "error" && (
+            <div className="mx-auto max-w-sm rounded-2xl border border-[#f0d9b8]/70 bg-[#fff8ef] px-4 py-3 text-[13px] leading-[1.55] text-[#8a5a1e]">
+              {error || "Could not render this page."}
+            </div>
+          )}
+          <img
+            src={src}
+            alt={`Page ${citation.page} of ${citationLabel(citation.title)}`}
+            className={cn(
+              "mx-auto w-full rounded-xl bg-white shadow-sm",
+              state !== "ready" && "hidden",
+            )}
+            onLoad={() => setState("ready")}
+            onError={async () => {
+              // The endpoint returns JSON on failure, which is more useful to
+              // show than a broken image icon.
+              try {
+                const r = await fetch(src);
+                const body = await r.json();
+                setError(body?.error ?? "");
+              } catch {
+                /* fall back to the generic message */
+              }
+              setState("error");
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Extraction pulls every embedded raster off a cited page, which on a real
+ * manual includes the page furniture -- the 57x57 wrench and info glyphs
+ * Schneider prints beside each note. Presenting those under "Diagrams" is
+ * worse than showing nothing, so anything too small to be a figure is
+ * measured on load and dropped, and the section disappears if none survive.
+ *
+ * This is a display guard, not a fix: the real filter belongs in the
+ * extractor (services/document-processor/app/pdf.py), which should not be
+ * emitting icons in the first place.
+ */
+const MIN_DIAGRAM_PX = 130;
+
+function Diagrams({ images }: { images: string[] }) {
+  const [usable, setUsable] = useState<Record<number, boolean>>({});
+  const candidates = images.slice(0, 6);
+  const anyUsable = candidates.some((_, i) => usable[i]);
+
+  return (
+    <div className={cn("space-y-2.5", !anyUsable && "hidden")}>
+      <SectionLabel>Diagrams from the manual</SectionLabel>
+      <div className="grid grid-cols-2 gap-2.5">
+        {candidates.map((img, i) => (
+          <div
+            key={i}
+            className={cn(
+              "overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-50 p-1.5",
+              !usable[i] && "hidden",
+            )}
+          >
+            <img
+              src={img}
+              alt=""
+              className="w-full rounded-xl object-contain"
+              style={{ maxHeight: 200 }}
+              loading="lazy"
+              onLoad={(e) => {
+                const el = e.currentTarget;
+                const big =
+                  el.naturalWidth >= MIN_DIAGRAM_PX || el.naturalHeight >= MIN_DIAGRAM_PX;
+                if (big) setUsable((prev) => (prev[i] ? prev : { ...prev, [i]: true }));
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 let _currentUtterance: SpeechSynthesisUtterance | null = null;
 let _speakingIndex: number | null = null;
@@ -132,153 +475,176 @@ export function speakText(text: string, index: number, onStateChange?: (i: numbe
   window.speechSynthesis.speak(utterance);
 }
 
-function MessageBubble({ message, index }: { message: ChatMessage; index: number }) {
+/**
+ * The spoken form is the whole answer, not just the meaning -- a technician
+ * with their hands inside a machine needs the steps read out, which is the
+ * entire point of the button.
+ */
+function spokenForm(a: CitedAnswer): string {
+  const parts: string[] = [];
+  if (a.error_code) parts.push(`Error ${a.error_code}.`);
+  if (a.meaning) parts.push(a.meaning);
+  if (a.probable_causes.length) parts.push(`Probable causes. ${a.probable_causes.join(". ")}.`);
+  if (a.corrective_action.length) {
+    parts.push(
+      `Corrective action. ${a.corrective_action.map((s) => `Step ${s.step}. ${s.action}`).join(" ")}`,
+    );
+  }
+  if (!parts.length && a.refusals.length) parts.push(a.refusals.join(" "));
+  return parts.join(" ");
+}
+
+function MessageBubble({
+  message,
+  index,
+  onOpenCitation,
+}: {
+  message: ChatMessage;
+  index: number;
+  onOpenCitation: (c: Citation) => void;
+}) {
   const isUser = message.role === "user";
   const a = message.structured;
   const [speaking, setSpeaking] = useState(false);
 
-  return (
-    <div className={cn("flex items-start gap-3", isUser ? "flex-row-reverse" : "")}>
-      <div
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-xl text-sm",
-          isUser ? "bg-neutral-900 text-white" : "bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm",
-        )}
-      >
-        {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
-      </div>
-
-      {isUser ? (
-        <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-neutral-900 px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm">
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-[20px] rounded-br-[6px] bg-neutral-950 px-4 py-2.5 text-[14px] leading-[1.55] tracking-[-0.01em] text-white sm:max-w-[75%]">
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
-      ) : (
-        <div className="max-w-[75%] space-y-3">
-          {!a && (
-            <div className="rounded-2xl border border-neutral-200/70 bg-white px-5 py-3.5 text-sm leading-relaxed text-neutral-700 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)]">
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            </div>
+      </div>
+    );
+  }
+
+  // Plain text reply (errors, network failures) -- no card chrome, it isn't an answer.
+  if (!a) {
+    return (
+      <div className="max-w-[85%] rounded-[20px] rounded-bl-[6px] border border-neutral-200/80 bg-white px-4 py-3 text-[14px] leading-[1.6] text-neutral-700 sm:max-w-[75%]">
+        <p className="whitespace-pre-wrap">{message.content}</p>
+      </div>
+    );
+  }
+
+  const confidence = CONFIDENCE_STYLE[a.confidence];
+
+  return (
+    <div className="w-full">
+      <div className="overflow-hidden rounded-3xl border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(16,15,25,0.04),0_12px_32px_-12px_rgba(16,15,25,0.10)]">
+        {/* Header — code, confidence, listen. Everything identifying, one row. */}
+        <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3 sm:px-7">
+          {a.error_code ? (
+            <span className="rounded-md bg-neutral-100 px-2 py-1 font-mono text-[12px] font-semibold tracking-[-0.01em] text-neutral-800">
+              {a.error_code}
+            </span>
+          ) : (
+            <span className="text-[13px] font-medium tracking-[-0.01em] text-neutral-950">Answer</span>
           )}
+          <span className="flex items-center gap-1.5">
+            <span className={cn("size-1.5 rounded-full", confidence.dot)} />
+            <span className={cn("text-[11px] font-medium", confidence.text)}>
+              {a.confidence} confidence
+            </span>
+          </span>
+          <button
+            onClick={() => speakText(spokenForm(a), index, (i) => setSpeaking(i === index))}
+            className={cn(
+              "ml-auto flex size-7 items-center justify-center rounded-full transition-colors",
+              speaking
+                ? "bg-[#359462]/10 text-[#2f7c53]"
+                : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900",
+            )}
+            title={speaking ? "Stop reading" : "Read answer aloud"}
+          >
+            {speaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
+          </button>
+        </div>
 
-          {a && (
-            <div className="overflow-hidden rounded-2xl border border-neutral-200/70 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)]">
-              <div className="space-y-4 px-5 py-4">
-                {a.refusals.length > 0 && (
-                  <div className="flex items-start gap-2.5 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                    <div className="space-y-1">
-                      {a.refusals.map((r, i) => (
-                        <p key={i}>{r}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(a.error_code || a.meaning) && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {a.error_code && (
-                      <span className="rounded-full bg-neutral-100 px-3 py-1 font-mono text-xs font-semibold text-neutral-600">
-                        {a.error_code}
-                      </span>
-                    )}
-                    <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", CONFIDENCE_STYLE[a.confidence])}>
-                      {a.confidence} confidence
-                    </span>
-                  </div>
-                )}
-
-                {a.meaning && (
-                  <div className="space-y-1.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Meaning</p>
-                    <p className="text-[15px] font-medium leading-relaxed text-neutral-900">{a.meaning}</p>
-                  </div>
-                )}
-
-                {a.probable_causes.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Probable Causes</p>
-                    <ul className="space-y-1.5">
-                      {a.probable_causes.map((c, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
-                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-neutral-300" />
-                          {c}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {a.corrective_action.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Corrective Action</p>
-                    <ol className="space-y-2">
-                      {a.corrective_action.map((s) => (
-                        <li key={s.step} className="flex items-start gap-2.5 text-sm text-neutral-600">
-                          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[10px] font-semibold text-emerald-600">
-                            {s.step}
-                          </span>
-                          {s.action}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
-                {a.citations.length > 0 && (
-                  <div className="space-y-2 border-t border-neutral-100 pt-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Sources</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {a.citations.map((c, i) => (
-                        <span
-                          key={i}
-                          title={c.section}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-500"
-                        >
-                          <File className="size-3" />
-                          {c.title} · p{c.page}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {a.images && a.images.length > 0 && (
-                  <div className="space-y-2 border-t border-neutral-100 pt-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Diagrams</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {a.images.slice(0, 4).map((img, i) => (
-                        <img
-                          key={i}
-                          src={img}
-                          alt=""
-                          className="rounded-xl border border-neutral-200/80"
-                          style={{ maxHeight: 160 }}
-                          loading="lazy"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    onClick={() => speakText(a.meaning || "", index, (i) => setSpeaking(i === index))}
-                    className={cn(
-                      "flex size-6 items-center justify-center rounded-full transition-colors",
-                      speaking
-                        ? "bg-emerald-100 text-emerald-600"
-                        : "text-neutral-400 hover:bg-neutral-100 hover:text-emerald-600",
-                    )}
-                    title={speaking ? "Stop" : "Listen"}
-                  >
-                    {speaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
-                  </button>
-                </div>
+        <div className="space-y-6 px-5 py-5 sm:px-7 sm:py-6">
+          {a.refusals.length > 0 && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-[#f0d9b8]/70 bg-[#fff8ef] px-4 py-3 text-[13px] leading-[1.55] text-[#8a5a1e]">
+              <AlertCircle className="mt-px size-4 shrink-0" />
+              <div className="space-y-1">
+                {a.refusals.map((r, i) => (
+                  <p key={i}>{r}</p>
+                ))}
               </div>
             </div>
           )}
+
+          {/* The lede. Deliberately the largest thing in the card. */}
+          {a.meaning && (
+            <p className="text-[17px] font-medium leading-[1.45] tracking-[-0.025em] text-[#17152A] sm:text-[19px]">
+              <CitedText text={a.meaning} citations={a.citations} />
+            </p>
+          )}
+
+          {a.probable_causes.length > 0 && (
+            <div className="space-y-2.5">
+              <SectionLabel>Probable causes</SectionLabel>
+              <ul className="space-y-1.5">
+                {a.probable_causes.map((c, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2.5 text-[14px] leading-[1.55] text-[#6D6878]"
+                  >
+                    <span className="mt-[9px] size-1 shrink-0 rounded-full bg-neutral-300" />
+                    <span>
+                      <CitedText text={c} citations={a.citations} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {a.corrective_action.length > 0 && (
+            <div className="space-y-2.5">
+              <SectionLabel>Corrective action</SectionLabel>
+              {/* The one place green earns its keep: these are the steps that
+                  actually fix the machine, and the numerals should be findable
+                  when you glance back at the screen mid-repair. */}
+              <ol className="space-y-2.5">
+                {a.corrective_action.map((s) => (
+                  <li key={s.step} className="flex gap-3">
+                    <span className="mt-[3px] flex size-[17px] shrink-0 items-center justify-center rounded-full bg-[#359462]/10 text-[10px] font-bold tabular-nums text-[#2f7c53]">
+                      {s.step}
+                    </span>
+                    <span className="text-[14px] leading-[1.55] text-[#3d3a49]">
+                      <CitedText text={s.action} citations={a.citations} />
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {a.images && a.images.length > 0 && <Diagrams images={a.images} />}
         </div>
-      )}
+
+        {/* Citations live in a footer band: always present, never competing
+            with the answer for attention, always findable. */}
+        {a.citations.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-neutral-100 bg-neutral-50/70 px-5 py-3 sm:px-7">
+            <SectionLabel>Sources</SectionLabel>
+            {a.citations.map((c, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onOpenCitation(c)}
+                title={`${c.section}\nClick to open page ${c.page} of the manual`}
+                className="group inline-flex items-center gap-1.5 rounded-full border border-neutral-200/80 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-600 transition-colors hover:border-neutral-400 hover:text-neutral-900"
+              >
+                <FileText className="size-3 text-neutral-400" />
+                {citationLabel(c.title)}
+                <span className="text-neutral-300">·</span>
+                <span className="tabular-nums font-semibold text-[#0570b0]">p.{c.page}</span>
+                <Maximize2 className="size-2.5 text-neutral-300 transition-colors group-hover:text-neutral-500" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -289,6 +655,7 @@ const SUGGESTIONS = [
   "E204 on the Press-2000",
   "b005 on powerflex",
 ];
+
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -303,8 +670,14 @@ export default function ChatPage() {
   const [uploadPct, setUploadPct] = useState(0);
   const [useOcr, setUseOcr] = useState(false);
   const [listening, setListening] = useState(false);
+  const [liveTrace, setLiveTrace] = useState<QueryStep[]>([]);
+  /** Which answers have their trace expanded, by message index. */
+  const [openTrace, setOpenTrace] = useState<Record<number, boolean>>({});
+  const [liveTraceOpen, setLiveTraceOpen] = useState(true);
+  const [openCitation, setOpenCitation] = useState<Citation | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -337,6 +710,12 @@ export default function ChatPage() {
     refreshStats();
   }, [refreshStats]);
 
+  // Follow the conversation on every turn, not only when a request settles --
+  // otherwise your own message can land below the fold as you send it.
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
+
   const handleDelete = async (documentId: string, label: string) => {
     if (!confirm(`Delete "${label}"? This removes it from the index; re-upload to add it back.`)) return;
     setDeletingId(documentId);
@@ -357,10 +736,8 @@ export default function ChatPage() {
 
   /**
    * fetch() has no upload-progress event, so this uses XHR for the real
-   * byte-transfer percentage (0-60%). Parsing + embedding happens
-   * server-side after the transfer completes with no granular signal back,
-   * so 60-95% is a slow simulated tick while waiting -- honest about being
-   * two different kinds of progress, not a fake full-request bar.
+   * byte-transfer percentage (0-5%). Parsing + embedding happens server-side
+   * and reports real progress through /api/ingest/progress, polled below.
    */
   const handleUpload = async (file: File) => {
     setUploadPct(0);
@@ -477,28 +854,66 @@ export default function ChatPage() {
     if (!text.trim() || loading) return;
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     setLoading(true);
+    setLiveTrace([]);
+
+    // The POST is one long request with no streaming, so stages are reported
+    // server-side against this id and polled here. 400ms is fast enough that
+    // a stage never feels stale, and cheap enough at ~8 polls per query.
+    const jobId = crypto.randomUUID();
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/chat/progress?id=${jobId}`);
+        if (!r.ok) return;
+        const t = await r.json();
+        if (Array.isArray(t.steps)) setLiveTrace(t.steps);
+      } catch {
+        /* a dropped poll is cosmetic — the next tick retries */
+      }
+    }, 400);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
+          job_id: jobId,
           history: messages.map((m) => ({
             role: m.role,
             content: m.structured ? summarizeForHistory(m.structured) : m.content,
           })),
         }),
       });
+      // Grab the final trace before tearing the poll down, so a query that
+      // finished between ticks still shows its last stages.
+      clearInterval(poll);
+      let finalTrace: QueryStep[] = [];
+      try {
+        const t = await (await fetch(`/api/chat/progress?id=${jobId}`)).json();
+        if (Array.isArray(t.steps)) finalTrace = t.steps;
+      } catch {
+        /* no trace is fine — the answer is what matters */
+      }
+
       if (!res.ok) {
         const err = await res.text();
-        setMessages((prev) => [...prev, { role: "assistant", content: `Error (${res.status}): ${err.slice(0, 200)}` }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `Error (${res.status}): ${err.slice(0, 200)}`, trace: finalTrace },
+        ]);
         return;
       }
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer.meaning || data.answer.refusals?.[0] || "", structured: data.answer },
+        {
+          role: "assistant",
+          content: data.answer.meaning || data.answer.refusals?.[0] || "",
+          structured: data.answer,
+          trace: finalTrace,
+        },
       ]);
     } catch (err) {
       setMessages((prev) => [
@@ -506,8 +921,9 @@ export default function ChatPage() {
         { role: "assistant", content: `Network error: ${err instanceof Error ? err.message : "Unknown"}` },
       ]);
     } finally {
+      clearInterval(poll);
       setLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      setLiveTrace([]);
     }
   };
 
@@ -515,32 +931,41 @@ export default function ChatPage() {
   const hasManuals = (stats?.documents ?? 0) > 0;
 
   const pipelineStats = [
-    { label: "Chunks", value: stats ? String(stats.chunks) : "—", icon: Layers },
-    { label: "Fault Codes", value: stats ? String(stats.faults) : "—", icon: Hash },
-    { label: "Vector Dims", value: stats?.dims ? String(stats.dims) : "—", icon: Database },
-    { label: "Embedder", value: "Jina v3", icon: Sparkles },
+    { label: "Chunks", value: stats ? stats.chunks.toLocaleString() : "—" },
+    { label: "Fault codes", value: stats ? String(stats.faults) : "—" },
+    { label: "Vector dims", value: stats?.dims ? String(stats.dims) : "—" },
+    { label: "Embedder", value: "Jina v3" },
   ];
 
   return (
-    <div className="flex h-svh bg-neutral-50 font-sans">
+    <div className="flex h-svh bg-neutral-50 font-sans text-neutral-950 antialiased">
+      {openCitation && (
+        <PageViewer citation={openCitation} onClose={() => setOpenCitation(null)} />
+      )}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-[2px] md:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-30 bg-neutral-950/20 backdrop-blur-[2px] md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
-      {/* Sidebar */}
+      {/* ───────────────────────── Sidebar ───────────────────────── */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-neutral-200/70 bg-white transition-transform duration-200 md:relative md:z-0 md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-[19rem] flex-col border-r border-neutral-200/70 bg-white transition-transform duration-200 ease-out md:relative md:z-0 md:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
-          <a href="/" className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-neutral-900 text-xs font-bold text-white">
+        <div className="flex items-center justify-between px-5 py-5">
+          <Link href="/" className="group flex items-center gap-2.5">
+            <div className="flex size-7 items-center justify-center rounded-[9px] bg-neutral-950 text-[11px] font-bold text-white">
               F
             </div>
-            <span className="text-sm font-semibold text-neutral-900">FaultFinder</span>
-          </a>
+            <span className="text-[14px] font-semibold tracking-[-0.02em] text-neutral-950">
+              FaultFinder
+            </span>
+            <ArrowUpRight className="size-3.5 text-neutral-300 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-neutral-500" />
+          </Link>
           <button
             onClick={() => setSidebarOpen(false)}
             className="flex size-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 md:hidden"
@@ -549,38 +974,44 @@ export default function ChatPage() {
           </button>
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-4 py-5">
+        <div className="scroll-fade flex-1 space-y-7 overflow-y-auto px-4 pb-6">
           {/* Manuals */}
-          <div>
-            <div className="mb-3 flex items-center gap-2 px-1">
-              <BookOpen className="size-3.5 text-neutral-400" />
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Manuals</p>
-              <span className="ml-auto rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">
+          <section>
+            <div className="mb-2.5 flex items-baseline gap-2 px-1">
+              <SectionLabel>Manuals</SectionLabel>
+              <span className="ml-auto text-[11px] font-medium tabular-nums text-neutral-400">
                 {stats?.documents ?? 0}
               </span>
             </div>
 
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {documents.length === 0 && (
-                <p className="px-3 py-2 text-[12px] text-neutral-400">No manuals indexed yet.</p>
+                <p className="rounded-2xl border border-dashed border-neutral-200 px-3.5 py-3 text-[12px] leading-[1.5] text-neutral-400">
+                  Nothing indexed yet. Upload a PDF manual to begin.
+                </p>
               )}
               {documents.map((doc) => (
                 <div
                   key={doc.document_id}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-neutral-50"
+                  className="group flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-neutral-50"
                 >
-                  <File className="size-4 shrink-0 text-neutral-400" />
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-neutral-100 text-neutral-500">
+                    <FileText className="size-3.5" />
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-neutral-800">{doc.model || doc.title}</p>
-                    <p className="text-[10px] text-neutral-400">
-                      {doc.pages}p · {doc.chunks ?? "—"}c{doc.faults ? ` · ${doc.faults} codes` : ""}
+                    <p className="truncate text-[13px] font-medium tracking-[-0.01em] text-neutral-900">
+                      {doc.model || doc.title}
+                    </p>
+                    <p className="text-[11px] tabular-nums text-neutral-400">
+                      {doc.pages} pages · {doc.chunks ?? "—"} chunks
+                      {doc.faults ? ` · ${doc.faults} codes` : ""}
                     </p>
                   </div>
                   <button
                     onClick={() => handleDelete(doc.document_id, doc.model || doc.title)}
                     disabled={deletingId === doc.document_id}
                     title="Delete manual"
-                    className="flex size-6 shrink-0 items-center justify-center rounded-lg text-neutral-300 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                    className="flex size-7 shrink-0 items-center justify-center rounded-lg text-neutral-300 opacity-0 transition hover:bg-[#c64e27]/10 hover:text-[#c64e27] focus-visible:opacity-100 disabled:opacity-100 group-hover:opacity-100"
                   >
                     {deletingId === doc.document_id ? (
                       <Loader2 className="size-3.5 animate-spin" />
@@ -594,13 +1025,17 @@ export default function ChatPage() {
 
             <label
               className={cn(
-                "mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-2.5 text-[12px] font-medium transition",
+                "mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-dashed px-3 py-3 text-[12px] font-medium transition",
                 upload.state === "busy"
                   ? "cursor-wait border-neutral-200 bg-neutral-50 text-neutral-400"
-                  : "border-neutral-300 text-neutral-500 hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-700",
+                  : "border-neutral-300 text-neutral-500 hover:border-neutral-950 hover:text-neutral-950",
               )}
             >
-              {upload.state === "busy" ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              {upload.state === "busy" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Plus className="size-3.5" />
+              )}
               {upload.state === "busy" ? "Indexing…" : "Upload PDF manual"}
               <input
                 ref={fileInputRef}
@@ -616,137 +1051,183 @@ export default function ChatPage() {
               />
             </label>
 
-            <label className="mt-1.5 flex items-center justify-center gap-1.5 text-[10px] text-neutral-400 cursor-pointer select-none">
+            <label className="mt-2 flex cursor-pointer select-none items-center justify-center gap-1.5 text-[10px] leading-[1.4] text-neutral-400">
               <input
                 type="checkbox"
                 checked={useOcr}
                 onChange={(e) => setUseOcr(e.target.checked)}
                 disabled={upload.state === "busy"}
-                className="size-3 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
+                className="size-3 rounded border-neutral-300 accent-neutral-950"
               />
-              <span>OCR for scanned pages (slower, requires Tesseract)</span>
+              <span>OCR scanned pages (slower)</span>
             </label>
 
             {upload.state !== "idle" && (
-              <div className="mt-2 space-y-1.5">
+              <div className="mt-3 space-y-2">
                 {upload.state === "busy" && (
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-neutral-200">
                     <div
-                      className="h-full rounded-full bg-emerald-500 transition-[width] duration-300"
+                      className="h-full rounded-full bg-[#359462] transition-[width] duration-500 ease-out"
                       style={{ width: `${uploadPct}%` }}
                     />
                   </div>
                 )}
                 <div
                   className={cn(
-                    "flex items-start gap-2 rounded-xl px-3 py-2 text-[11px] leading-snug",
+                    "flex items-start gap-2 rounded-2xl px-3 py-2.5 text-[11px] leading-[1.5]",
                     upload.state === "error"
-                      ? "bg-red-50 text-red-700"
+                      ? "bg-[#c64e27]/10 text-[#a8401f]"
                       : upload.state === "done"
-                        ? "bg-emerald-50 text-emerald-700"
+                        ? "bg-[#359462]/10 text-[#2f7c53]"
                         : "bg-neutral-100 text-neutral-600",
                   )}
                 >
-                  {upload.state === "done" && <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" />}
-                  {upload.state === "error" && <AlertCircle className="mt-0.5 size-3.5 shrink-0" />}
-                  {upload.state === "busy" && <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" />}
-                  <span>
+                  {upload.state === "done" && <CheckCircle2 className="mt-px size-3.5 shrink-0" />}
+                  {upload.state === "error" && <AlertCircle className="mt-px size-3.5 shrink-0" />}
+                  {upload.state === "busy" && <Loader2 className="mt-px size-3.5 shrink-0 animate-spin" />}
+                  <span className={upload.state === "busy" ? "shimmer" : undefined}>
                     {upload.message}
                     {upload.state === "busy" && ` (${uploadPct}%)`}
                   </span>
                 </div>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Pipeline */}
-          <div className="border-t border-neutral-100 pt-4">
-            <div className="mb-3 flex items-center gap-2 px-1">
-              <Database className="size-3.5 text-neutral-400" />
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Pipeline</p>
+          {/* Pipeline — a definition list, not four boxes. */}
+          <section>
+            <div className="mb-2.5 px-1">
+              <SectionLabel>Pipeline</SectionLabel>
             </div>
-            <div className="space-y-2">
-              {pipelineStats.map((s) => (
-                <div key={s.label} className="flex items-center gap-3 rounded-xl bg-neutral-50 px-3 py-2">
-                  <s.icon className="size-4 shrink-0 text-neutral-400" />
-                  <div className="flex w-full items-center justify-between">
-                    <p className="text-[10px] font-medium text-neutral-500">{s.label}</p>
-                    <p className="text-[12px] font-semibold text-neutral-800">{s.value}</p>
-                  </div>
+            <dl className="overflow-hidden rounded-2xl border border-neutral-200/70">
+              {pipelineStats.map((s, i) => (
+                <div
+                  key={s.label}
+                  className={cn(
+                    "flex items-center justify-between px-3.5 py-2.5",
+                    i > 0 && "border-t border-neutral-100",
+                  )}
+                >
+                  <dt className="text-[12px] text-neutral-500">{s.label}</dt>
+                  <dd className="text-[12px] font-semibold tabular-nums tracking-[-0.01em] text-neutral-900">
+                    {s.value}
+                  </dd>
                 </div>
               ))}
-            </div>
-          </div>
+            </dl>
+          </section>
+
+          {/* Setup — kept, but folded away so it never competes with the work. */}
+          <section>
+            <details className="group rounded-2xl border border-neutral-200/70 px-3.5 py-2.5">
+              <summary className="cursor-pointer list-none text-[11px] font-medium text-neutral-500 transition-colors hover:text-neutral-900">
+                Setup &amp; troubleshooting
+                <span className="float-right text-neutral-300 transition-transform group-open:rotate-45">
+                  +
+                </span>
+              </summary>
+              <div className="mt-3 space-y-2 text-[11px] leading-[1.6] text-neutral-500">
+                <p>
+                  Requires the parser at <code className="rounded bg-neutral-100 px-1 py-px font-mono text-[10px]">:8080</code>{" "}
+                  plus <code className="rounded bg-neutral-100 px-1 py-px font-mono text-[10px]">JINA_API_KEY</code> and{" "}
+                  <code className="rounded bg-neutral-100 px-1 py-px font-mono text-[10px]">GROQ_API_KEY</code> in{" "}
+                  <code className="rounded bg-neutral-100 px-1 py-px font-mono text-[10px]">apps/web/.env.local</code>.
+                </p>
+                <p>
+                  An upload that misbehaves can be deleted and re-uploaded — embeddings are cached, so
+                  the second pass takes seconds.
+                </p>
+              </div>
+            </details>
+          </section>
         </div>
       </aside>
 
-      {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-neutral-200/70 bg-white/80 px-5 py-3 backdrop-blur-sm">
+      {/* ───────────────────────── Main ───────────────────────── */}
+      <div className="relative isolate flex min-w-0 flex-1 flex-col">
+        <header className="relative z-10 flex h-[57px] shrink-0 items-center justify-between border-b border-neutral-200/70 bg-neutral-50/70 px-5 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="flex size-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 md:hidden"
+              className="flex size-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 md:hidden"
             >
               <Menu className="size-4" />
             </button>
-            <div className="flex size-8 items-center justify-center rounded-xl bg-neutral-900 text-xs font-bold text-white md:hidden">
-              F
-            </div>
-            <p className="text-sm font-semibold text-neutral-900">Ask FaultFinder</p>
+            <p className="text-[13px] font-medium tracking-[-0.01em] text-neutral-950">
+              Ask FaultFinder
+            </p>
           </div>
-          <div className="hidden items-center gap-2 text-[11px] font-medium text-neutral-400 sm:flex">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            {stats?.documents ?? 0} manuals · {stats?.chunks ?? 0} chunks indexed
+          <div className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
+            <span
+              className={cn("size-1.5 rounded-full", hasManuals ? "bg-[#359462]" : "bg-neutral-300")}
+            />
+            <span className="tabular-nums">
+              {stats?.documents ?? 0} {stats?.documents === 1 ? "manual" : "manuals"} ·{" "}
+              {(stats?.chunks ?? 0).toLocaleString()} chunks
+            </span>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-8">
-          <div className="mx-auto max-w-3xl space-y-5">
+        <div className="scroll-fade relative flex-1 overflow-y-auto px-5">
+          <div className="mx-auto max-w-[46rem] space-y-6 py-8">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center pt-16 text-center">
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/20">
-                  <Bot className="size-7 text-white" />
-                </div>
-                <h1 className="mt-5 text-2xl font-medium text-neutral-900">Ask FaultFinder</h1>
-                <p className="mt-1.5 max-w-sm text-sm text-neutral-400">
-                  Type an error code, a symptom, or a machine name. Get a cited answer from the correct manual.
+              <div className="flex flex-col items-center px-2 pt-[10vh] text-center">
+                {/* Two-tone heading, the same device the landing page's bento
+                    cards use — accent line first, dark line under it. */}
+                <h1 className="max-w-[20rem] text-[2rem] font-medium leading-[1.05] tracking-[-0.04em] sm:max-w-lg sm:text-[2.75rem] sm:tracking-[-0.045em]">
+                  <span className="block text-[#17152A]">Turn a cryptic error code</span>
+                  <span className="block text-[#359462]">into a fix.</span>
+                </h1>
+                <p className="mt-4 max-w-[24rem] text-[14px] font-medium leading-[1.55] tracking-[-0.02em] text-[#6D6878] sm:text-[15px]">
+                  Type an error code, a symptom, or a machine name. Every answer comes back with the
+                  meaning, the probable cause, and cited repair steps.
                 </p>
 
                 {!hasManuals ? (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="mt-8 flex items-center gap-2 rounded-full border border-dashed border-neutral-300 bg-white px-5 py-3 text-sm font-medium text-neutral-500 transition hover:border-emerald-300 hover:bg-emerald-50/50 hover:text-emerald-700"
-                  >
-                    <Upload className="size-4" />
-                    Upload a PDF manual to get started
-                  </button>
+                  <>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-9 inline-flex h-11 items-center gap-2 rounded-full bg-neutral-950 px-6 text-[14px] font-semibold text-white transition-colors hover:bg-neutral-800"
+                    >
+                      <Upload className="size-4" />
+                      Upload a PDF manual
+                    </button>
+                    <p className="mt-3 text-[12px] text-neutral-400">
+                      Nothing is preloaded — the index starts empty by design.
+                    </p>
+                  </>
                 ) : (
                   <>
-                    <div className="mt-8 grid w-full max-w-sm grid-cols-2 gap-3">
+                    <div className="mt-10 grid w-full max-w-md grid-cols-2 gap-2.5 sm:grid-cols-4">
                       {[
-                        { label: "Manuals", value: stats?.documents ?? 0, sub: "indexed" },
-                        { label: "Chunks", value: stats?.chunks ?? 0, sub: "structured" },
-                        { label: "Fault Codes", value: stats?.faults ?? 0, sub: "extracted" },
-                        { label: "Vector Dims", value: stats?.dims ?? 0, sub: "jina v3" },
+                        { label: "Manuals", value: (stats?.documents ?? 0).toLocaleString() },
+                        { label: "Chunks", value: (stats?.chunks ?? 0).toLocaleString() },
+                        { label: "Codes", value: (stats?.faults ?? 0).toLocaleString() },
+                        // A vector dimension is not a quantity — never comma-grouped.
+                        { label: "Dims", value: String(stats?.dims ?? 0) },
                       ].map((s) => (
                         <div
                           key={s.label}
-                          className="rounded-2xl border border-neutral-200/70 bg-white px-4 py-3.5 text-left shadow-sm"
+                          className="rounded-2xl border border-neutral-200/70 bg-white px-3.5 py-3 text-left"
                         >
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{s.label}</p>
-                          <p className="mt-0.5 text-xl font-bold text-neutral-900">{s.value}</p>
-                          <p className="text-[10px] text-neutral-400">{s.sub}</p>
+                          <p className="text-[20px] font-medium tabular-nums leading-none tracking-[-0.03em] text-neutral-950">
+                            {s.value}
+                          </p>
+                          <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-neutral-400">
+                            {s.label}
+                          </p>
                         </div>
                       ))}
                     </div>
-                    <div className="mt-8 flex flex-wrap justify-center gap-2">
-                      <span className="text-xs font-medium text-neutral-400">Try:</span>
+
+                    {/* Stacked on a narrow screen so four pills of different
+                        widths don't read as scattered debris. */}
+                    <div className="mt-8 flex w-full max-w-lg flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
                       {SUGGESTIONS.map((q) => (
                         <button
                           key={q}
                           onClick={() => handleSubmit(q)}
-                          className="cursor-pointer rounded-full border border-neutral-200/80 bg-white px-3 py-1.5 text-xs font-medium text-neutral-500 transition hover:border-emerald-300 hover:text-emerald-700"
+                          className="rounded-full border border-neutral-200/80 bg-white px-3.5 py-2 text-[12.5px] font-medium tracking-[-0.01em] text-neutral-600 transition-colors hover:border-neutral-950 hover:text-neutral-950"
                         >
                           {q}
                         </button>
@@ -758,66 +1239,115 @@ export default function ChatPage() {
             )}
 
             {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} index={i} />
-            ))}
-            {loading && (
-              <div className="flex items-center gap-2.5 rounded-2xl border border-neutral-200/70 bg-white px-5 py-3.5 text-sm text-neutral-500 shadow-sm">
-                <Loader2 className="size-4 animate-spin text-emerald-500" />
-                Searching manuals...
+              <div key={i} className="space-y-2">
+                <MessageBubble message={msg} index={i} onOpenCitation={setOpenCitation} />
+                {/* Kept after the fact, collapsed: the answer is the point, but
+                    "where did this come from" should never need a rerun. */}
+                {msg.role === "assistant" && msg.trace && msg.trace.length > 0 && (
+                  <QueryTrace
+                    steps={msg.trace}
+                    live={false}
+                    open={!!openTrace[i]}
+                    onToggle={() => setOpenTrace((prev) => ({ ...prev, [i]: !prev[i] }))}
+                  />
+                )}
               </div>
+            ))}
+
+            {loading && (
+              <QueryTrace
+                steps={liveTrace}
+                live
+                open={liveTraceOpen}
+                onToggle={() => setLiveTraceOpen((v) => !v)}
+              />
             )}
             <div ref={bottomRef} />
           </div>
         </div>
 
-        <div className="border-t border-neutral-200/70 bg-white/90 px-5 py-4 backdrop-blur-sm">
+        {/* ── Composer: one surface, actions inside it. ── */}
+        <div className="shrink-0 px-5 pb-5">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSubmit(input);
             }}
-            className="mx-auto flex max-w-3xl items-end gap-2"
+            className="mx-auto max-w-[46rem]"
           >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              // Implicit form submission doesn't reliably fire for this input,
-              // so Enter is wired explicitly — without this, typing a query
-              // and pressing Enter can silently do nothing.
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  handleSubmit(input);
+            <div className="rounded-[26px] border border-neutral-200/80 bg-white p-2 shadow-[0_1px_2px_rgba(16,15,25,0.04),0_16px_40px_-16px_rgba(16,15,25,0.14)] transition-colors focus-within:border-neutral-400">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                rows={1}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  // Grow with the content, up to ~6 lines, then scroll.
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 168)}px`;
+                }}
+                // Implicit form submission doesn't fire for a textarea, so
+                // Enter is wired explicitly — Shift+Enter still inserts a newline.
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    handleSubmit(input);
+                  }
+                }}
+                placeholder={
+                  hasManuals
+                    ? "e.g. E101 on the injection molding machine"
+                    : "Upload a manual first, then ask anything about it"
                 }
-              }}
-              placeholder="e.g. E101 on the injection molding machine"
-              disabled={loading}
-              className="flex-1 rounded-2xl border border-neutral-200/80 bg-neutral-50 px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 transition focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-100 disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={startListening}
-              disabled={loading || listening}
-              className={cn(
-                "flex size-10 shrink-0 items-center justify-center rounded-full transition-all",
-                listening
-                  ? "bg-emerald-500 text-white shadow-lg shadow-emerald-300/50 animate-pulse"
-                  : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-700",
-              )}
-              title="Voice input"
-            >
-              <Mic className="size-4" />
-            </button>
-            <button
-              type="submit"
-              disabled={!input.trim() || loading}
-              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white shadow-sm transition hover:bg-neutral-700 disabled:opacity-40"
-            >
-              <ArrowUp className="size-4" />
-            </button>
+                disabled={loading}
+                className="max-h-[168px] w-full resize-none bg-transparent px-3 pb-1 pt-2 text-[14.5px] leading-[1.55] tracking-[-0.01em] text-neutral-950 placeholder:text-neutral-400 focus:outline-none disabled:opacity-50"
+              />
+              <div className="flex items-center gap-1.5 px-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={upload.state === "busy"}
+                  title="Upload a PDF manual"
+                  className="flex size-8 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40"
+                >
+                  <Plus className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={startListening}
+                  disabled={loading || listening}
+                  title="Voice input"
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full transition-colors",
+                    listening
+                      ? "bg-[#c64e27] text-white"
+                      : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700",
+                  )}
+                >
+                  <Mic className={cn("size-4", listening && "animate-pulse")} />
+                </button>
+
+                <span className="ml-auto hidden pr-1 text-[10.5px] text-neutral-300 sm:block">
+                  Enter to send · Shift+Enter for a new line
+                </span>
+
+                <button
+                  type="submit"
+                  disabled={!input.trim() || loading}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-white transition-all hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400"
+                >
+                  {loading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ArrowUp className="size-4" />
+                  )}
+                </button>
+              </div>
+            </div>
           </form>
-          <p className="mt-2 text-center text-[10px] text-neutral-400">
-            Answers are sourced from loaded manuals. Verify before acting.
+          <p className="mt-2.5 text-center text-[10.5px] text-neutral-400">
+            Answers are retrieved from your loaded manuals and cited by page. Verify before acting on
+            live equipment.
           </p>
         </div>
       </div>

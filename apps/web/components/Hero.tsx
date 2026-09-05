@@ -322,7 +322,6 @@ function PreviewClock() {
       </div>
       <p className="mt-3 font-poppins text-[10px] tracking-[0.15em] text-neutral-500 sm:mt-4 sm:text-xs">
         LIVE PREVIEW
-        FAULT FINDER
       </p>
     </div>
   );
@@ -530,10 +529,10 @@ function PreviewAnalytics() {
     <div className="flex h-[330px] flex-col justify-center gap-3 px-3 sm:h-auto sm:min-h-[640px] sm:gap-6 sm:px-6">
       <div className="grid grid-cols-2 gap-3">
         {[
-          { title: "Total time", time: "47 h 12 m" },
-          { title: "Today's time", time: "2 h 15 m" },
-          { title: "Current streak", time: "14 days" },
-          { title: "Average time", time: "1 h 04 m" },
+          { title: "Codes resolved", time: "365" },
+          { title: "Resolved today", time: "28" },
+          { title: "Citation rate", time: "100%" },
+          { title: "Refused, not guessed", time: "12" },
           { title: "Manuals", time: "5 loaded" },
           { title: "Chunks", time: "81 indexed" },
           { title: "Avg query", time: "1.2 sec" },
@@ -556,7 +555,6 @@ function PreviewAnalytics() {
         <div className="flex items-center gap-2 border-b border-white/10 bg-neutral-800/50 px-4 py-3 sm:px-5 sm:py-4">
           <span className="size-2 rounded-full bg-green-500" />
           <p className="font-poppins text-[10px] uppercase tracking-[0.18em] text-neutral-500 sm:text-xs">
-            Time tracked
             Queries resolved
           </p>
         </div>
@@ -618,7 +616,6 @@ function DashboardPreview() {
                 U
               </div>
               <p className="truncate font-poppins text-[11px] text-neutral-400">
-                Demo User
                 Tech Support
               </p>
             </div>
@@ -748,7 +745,7 @@ export const Hero = () => {
         <div className="mx-auto flex w-full max-w-7xl flex-col items-center text-center">
           <div className="pt-12 sm:pt-[15vh]">
             <h1 className="mx-auto max-w-[22rem] text-[2.2rem] leading-[1.04] tracking-[-0.01em] text-black/90 sm:max-w-4xl sm:text-5xl sm:leading-[0.92] sm:tracking-[-0.02em] md:text-7xl font-bold">
-              Turn a cryptic error code into a fix. in seconds.
+              Turn a cryptic error code into a fix, in seconds.
             </h1>
             <p className="mx-auto mt-4 max-w-[21rem] text-[13px] leading-6 text-black/80 sm:mt-6 sm:max-w-xl sm:text-base sm:leading-7 lg:text-lg">
               Type an error code, a symptom, or a machine name. FaultFinder
@@ -774,8 +771,7 @@ export const Hero = () => {
                 }
                 className="h-11 w-full rounded-full border border-lime-500/70 bg-lime-300 px-8 text-sm font-semibold text-black transition-all duration-200 hover:bg-lime-400 sm:h-12 sm:w-auto sm:text-lg"
               >
-                Product Demo
-                Live Demo
+                See how it works
               </Button>
             </div>
           </div>
@@ -908,7 +904,6 @@ export const Hero = () => {
                   </div>
 
                   <p className="mt-3 text-[13.5px] font-medium leading-[1.42] tracking-[-0.02em] text-[#6D6878] sm:text-[15px] sm:leading-[1.45] sm:tracking-[-0.025em]">
-                    Choose hours, minutes, and seconds, then start the timer.
                     Embed, retrieve, and generate cited answers from manuals.
                   </p>
                 </div>
@@ -917,8 +912,7 @@ export const Hero = () => {
                   <div className="flex items-center justify-center gap-2 sm:gap-6">
                     <div className="flex min-w-[76px] sm:min-w-[96px] flex-col items-center rounded-xl sm:rounded-2xl bg-white/70 px-2 py-2 sm:px-3 sm:py-3 shadow-sm">
                       <span className="mb-2 text-[8px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.24em] text-slate-500">
-Hours
-                        Machine
+                        Hours
                       </span>
                       <WheelPickerWrapper className="w-16 sm:w-24">
                         <WheelPicker
@@ -1024,10 +1018,8 @@ Hours
               </div>
 
               <p className="mt-3 max-w-[360px] text-[13.5px] font-medium leading-[1.42] tracking-[-0.02em] text-[#6D6878] sm:text-[15px] sm:leading-[1.45] sm:tracking-[-0.025em]">
-Visualize your dedication over the entire year with a
-                  GitHub-style activity contribution map per machine.
-                  Search across multiple manuals at once — results are
-                  scoped to the correct machine automatically.
+                Search across multiple manuals at once — results are scoped to the
+                correct machine automatically.
               </p>
               <div className="mt-5">
                 <ContributionGraph weeks={contributionWeeks} />
@@ -1045,10 +1037,8 @@ Visualize your dedication over the entire year with a
               </div>
 
               <p className="mt-3 max-w-[360px] text-[13.5px] font-medium leading-[1.42] tracking-[-0.02em] text-[#6D6878] sm:text-[15px] sm:leading-[1.45] sm:tracking-[-0.025em]">
-                Get instant feedback on session completions, streak milestones,
-                and leaderboard progress.
-                Get instant feedback on resolved codes, ambiguity
-                detection, and cited answers from the pipeline.
+                Get instant feedback on resolved codes, ambiguity detection, and
+                cited answers from the pipeline.
               </p>
 
               <div className="relative mt-4 min-h-0 flex-1 overflow-hidden">
@@ -1074,10 +1064,8 @@ Visualize your dedication over the entire year with a
               </div>
 
               <p className="relative z-10 mt-3 max-w-[360px] text-[13.5px] font-medium leading-[1.42] tracking-[-0.02em] text-[#6D6878] sm:text-[15px] sm:leading-[1.45] sm:tracking-[-0.025em]">
-                Join students and developers worldwide tracking focus sessions
-                in real time.
-                Vector + exact-match retrieval across all loaded manuals
-                with page-level citations.
+                Vector + exact-match retrieval across all loaded manuals with
+                page-level citations.
               </p>
 
               <div className="relative mt-2 min-h-0 flex-1">
@@ -1097,10 +1085,9 @@ Visualize your dedication over the entire year with a
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-medium text-neutral-900 leading-tight">
-Interactive Workspace Showcase
+              Interactive Workspace Showcase
               </h2>
               <p className="text-neutral-600 mt-2 text-base sm:text-xl">
-                Experience the timer, focus tags, leaderboards, and analytics tabs.
                 Search, retrieve, and explore machine troubleshooting data.
               </p>
             </div>
@@ -1111,14 +1098,11 @@ Interactive Workspace Showcase
       <section id="preview" className="bg-neutral-50 py-16 md:py-24">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 flex flex-col justify-center items-center gap-5">
           <h1 className="text-3xl sm:text-4xl md:text-5xl max-w-lg text-center font-medium leading-tight">
-            Live Focus Sessions Charts with users
-              Live Maintenance Requests with citations
+            Live Maintenance Requests with citations
           </h1>
           <p className="text-base sm:text-lg md:text-xl text-center text-neutral-600 max-w-lg">
-Real-time updates of deep work, consistency streaks, and task
-              completions from Users.
-              Real-time queries showing error codes, retrieved sources,
-              and cited answers from the pipeline.
+            Real-time queries showing error codes, retrieved sources, and cited
+            answers from the pipeline.
           </p>
 
           <div className="overflow-hidden rounded-3xl border border-neutral-200/80 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.015)] backdrop-blur-sm p-2 sm:p-4 w-full mt-5">
@@ -1135,7 +1119,7 @@ Real-time updates of deep work, consistency streaks, and task
                     Duration
                   </TableHead>
                   <TableHead className="font-bold text-neutral-600">
-                    Streak
+                    Citations
                   </TableHead>
                   <TableHead className="font-bold text-neutral-600">
                     Time
@@ -1296,7 +1280,6 @@ Real-time updates of deep work, consistency streaks, and task
                     rel="noopener noreferrer"
                   >
                     GitHub Sponsors
-                    View on GitHub
                     <ArrowUpRight className="w-4 h-4 text-white/70 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                   </a>
                 </Button>
@@ -1311,7 +1294,6 @@ Real-time updates of deep work, consistency streaks, and task
                     rel="noopener noreferrer"
                   >
                     Buy Me a Coffee
-                    View Documentation
                     <ArrowUpRight className="w-4 h-4 text-neutral-500 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                   </a>
                 </Button>

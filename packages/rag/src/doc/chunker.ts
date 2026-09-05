@@ -12,9 +12,9 @@
  * costs nothing and puts the machine name and section title into both the dense
  * vector and the lexical index.
  */
-import type { Block, Chunk, BlockKind, TableData } from "./model";
-import { breadcrumb, extractFaultCodes, extractUnits } from "./model";
-import { renderMarkdown } from "./tables";
+import type { Block, Chunk, BlockKind, TableData } from "./model.ts";
+import { breadcrumb, extractFaultCodes, extractUnits } from "./model.ts";
+import { renderMarkdown } from "./tables.ts";
 
 export interface ChunkOptions {
   /** Target size in tokens. Chunks pack up to this. */

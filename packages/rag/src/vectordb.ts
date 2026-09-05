@@ -3,7 +3,7 @@
  * Uses @qdrant/js-client-rest to connect to Qdrant (cloud or local).
  */
 import { QdrantClient } from "@qdrant/js-client-rest";
-import type { Chunk, ScoredHit, VectorStore } from "./types";
+import type { Chunk, ScoredHit, VectorStore } from "./types.ts";
 
 export interface VectorDbConfig {
   url: string;

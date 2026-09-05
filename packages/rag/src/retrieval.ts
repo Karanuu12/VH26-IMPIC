@@ -2,7 +2,7 @@
  * Retrieval layer: hybrid query expansion, cross-manual disambiguation,
  * score filtering, and re-ranking.
  */
-import type { Chunk, ScoredHit } from "./types";
+import type { Chunk, ScoredHit } from "./types.ts";
 
 /**
  * Build a refined search query from the raw user message.

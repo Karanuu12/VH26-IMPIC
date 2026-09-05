@@ -37,6 +37,12 @@ export interface Citation {
   title: string;
   page: number;
   section: string;
+  /**
+   * The retrieved passage this citation points at, used to highlight the
+   * supporting text on the rendered page. Optional because citations that
+   * come from a deterministic fault record have no single source chunk.
+   */
+  snippet?: string;
 }
 
 /** Structured, cited answer from the pipeline. */

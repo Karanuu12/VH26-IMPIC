@@ -20,8 +20,8 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { writeFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { Chunk, FaultRecord } from "../doc/model";
-import { normalizeCode } from "../doc/model";
+import type { Chunk, FaultRecord } from "../doc/model.ts";
+import { normalizeCode } from "../doc/model.ts";
 
 export interface StoredDocument {
   documentId: string;
